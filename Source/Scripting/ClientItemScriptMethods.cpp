@@ -191,6 +191,22 @@ FO_SCRIPT_API void Client_Item_MoveToHex(ptr<ItemView> self, mpos hex, float32_t
 }
 
 ///@ ExportMethod
+FO_SCRIPT_API void Client_Item_MoveToHexVisual(ptr<ItemView> self, mpos hex, float32_t speed)
+{
+    if (auto hex_item = self.dyn_cast<ItemHexView>()) {
+        hex_item->MoveToHexVisual(hex, speed);
+    }
+}
+
+///@ ExportMethod
+FO_SCRIPT_API void Client_Item_MoveToHexVisualForDuration(ptr<ItemView> self, mpos hex, int32_t duration_ms)
+{
+    if (auto hex_item = self.dyn_cast<ItemHexView>()) {
+        hex_item->MoveToHexVisualForDuration(hex, duration_ms);
+    }
+}
+
+///@ ExportMethod
 FO_SCRIPT_API vector<ptr<ItemView>> Client_Item_GetInnerItems(ptr<ItemView> self)
 {
     span<refcount_ptr<ItemView>> inner_items = self->GetInnerItems();

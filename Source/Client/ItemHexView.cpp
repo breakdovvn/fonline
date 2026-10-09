@@ -39,6 +39,9 @@
 
 FO_BEGIN_NAMESPACE
 
+// A stalled or hitched frame must not fling a flying item across the map or reverse it
+constexpr float32_t FlyMoveMaxFrameDeltaMs = 100.0f;
+
 ItemHexView::ItemHexView(ptr<MapView> map, ident_t id, ptr<const ProtoItem> proto, nptr<const Properties> props) :
     ItemView(map->GetEngine(), id, proto, props),
     HexView(map)
@@ -101,32 +104,52 @@ void ItemHexView::Process()
 
     if (_isMoving) {
         nanotime time = _engine->GameTime.GetFrameTime();
-        float32_t dt = (time - _moveUpdateLastTime).to_ms<float32_t>();
-        _moveUpdateLastTime = time;
 
-        _moveCurOffset += _moveStepOffset * _moveSpeed * dt;
-        RefreshOffs();
+        if (_moveVisualOnly) {
+            float32_t elapsed = (time - _moveStartTime).to_ms<float32_t>();
+            float32_t progress = _moveDurationMs > 0.0f ? std::min(elapsed / _moveDurationMs, 1.0f) : 1.0f;
 
-        float32_t dist = (_moveCurOffset - _moveStartOffset).dist();
-
-        if (dist >= _moveWholeDist) {
-            _moveCurOffset = (_moveStartOffset + _moveStepOffset) * _moveWholeDist;
-            _isMoving = false;
-        }
-
-        int32_t proc = _moveWholeDist > 0.0f ? iround<int32_t>(dist / _moveWholeDist * 100.0f) : 100;
-        auto step_hex = _moveSteps[_moveSteps.size() * std::min(proc, 99) / 100];
-
-        if (auto hex = GetHex(); hex != step_hex) {
-            const auto [x, y] = GeometryHelper::GetHexOffset(hex, step_hex);
-
-            _moveStartOffset.x -= numeric_cast<float32_t>(x);
-            _moveStartOffset.y -= numeric_cast<float32_t>(y);
-            _moveCurOffset.x -= numeric_cast<float32_t>(x);
-            _moveCurOffset.y -= numeric_cast<float32_t>(y);
+            _moveCurOffset = _moveStepOffset * (_moveWholeDist * progress);
             RefreshOffs();
 
-            _map->MoveItem(this, step_hex);
+            if (progress >= 1.0f) {
+                _isMoving = false;
+                _moveVisualOnly = false;
+            }
+        }
+        else {
+            float32_t dt = (time - _moveUpdateLastTime).to_ms<float32_t>();
+            _moveUpdateLastTime = time;
+
+            if (dt > 0.0f) {
+                _moveCurOffset += _moveStepOffset * _moveSpeed * std::min(dt, FlyMoveMaxFrameDeltaMs);
+
+                float32_t dist = (_moveCurOffset - _moveStartOffset).dist();
+
+                if (dist >= _moveWholeDist) {
+                    _moveCurOffset = _moveStartOffset + _moveStepOffset * _moveWholeDist;
+                    RefreshOffs();
+                    _isMoving = false;
+                }
+                else {
+                    RefreshOffs();
+
+                    int32_t proc = _moveWholeDist > 0.0f ? iround<int32_t>(dist / _moveWholeDist * 100.0f) : 100;
+                    auto step_hex = _moveSteps[_moveSteps.size() * std::min(proc, 99) / 100];
+
+                    if (auto hex = GetHex(); hex != step_hex) {
+                        const auto [x, y] = GeometryHelper::GetHexOffset(hex, step_hex);
+
+                        _moveStartOffset.x -= numeric_cast<float32_t>(x);
+                        _moveStartOffset.y -= numeric_cast<float32_t>(y);
+                        _moveCurOffset.x -= numeric_cast<float32_t>(x);
+                        _moveCurOffset.y -= numeric_cast<float32_t>(y);
+                        RefreshOffs();
+
+                        _map->MoveItem(this, step_hex);
+                    }
+                }
+            }
         }
     }
 }
@@ -139,10 +162,12 @@ void ItemHexView::MoveToHex(mpos hex, float32_t speed)
 
     if (cur_hex == hex) {
         _isMoving = false;
+        _moveVisualOnly = false;
         return;
     }
 
     _isMoving = true;
+    _moveVisualOnly = false;
     _moveSpeed = speed;
 
     _moveSteps.clear();
@@ -159,6 +184,63 @@ void ItemHexView::MoveToHex(mpos hex, float32_t speed)
     _moveCurOffset = _moveStartOffset;
     _moveDir = mdir(iround<int32_t>(GeometryHelper::GetDirAngle(cur_hex, hex)));
     _moveUpdateLastTime = _engine->GameTime.GetFrameTime();
+}
+
+void ItemHexView::MoveToHexVisual(mpos hex, float32_t speed)
+{
+    FO_STACK_TRACE_ENTRY();
+
+    MoveToHexVisualImpl(hex, speed, 0);
+}
+
+void ItemHexView::MoveToHexVisualForDuration(mpos hex, int32_t duration_ms)
+{
+    FO_STACK_TRACE_ENTRY();
+
+    FO_VERIFY_AND_THROW(duration_ms > 0, "Visual movement duration must be positive", duration_ms);
+    MoveToHexVisualImpl(hex, 0.0f, duration_ms);
+}
+
+void ItemHexView::MoveToHexVisualImpl(mpos hex, float32_t speed, int32_t duration_ms)
+{
+    FO_STACK_TRACE_ENTRY();
+
+    auto cur_hex = GetHex();
+
+    if (cur_hex == hex) {
+        _isMoving = false;
+        _moveVisualOnly = false;
+        return;
+    }
+
+    ipos32 pos_offset = GeometryHelper::GetHexOffset(cur_hex, hex);
+
+    float32_t whole_dist = fpos32(pos_offset).dist();
+
+    if (whole_dist <= 0.0f) {
+        _isMoving = false;
+        _moveVisualOnly = false;
+        return;
+    }
+
+    _isMoving = true;
+    _moveVisualOnly = true;
+    _moveSpeed = duration_ms > 0 ? whole_dist / numeric_cast<float32_t>(duration_ms) : speed;
+
+    _moveSteps.clear();
+
+    // A pure visual trajectory keeps the item on its spawn hex and slides the sprite along a
+    // straight line, so no per-hex field/sprite churn can wobble or stall the flight
+    _moveStepOffset = fpos32(pos_offset) / whole_dist;
+    _moveWholeDist = whole_dist;
+
+    _moveBaseOffset = GetOffset();
+    _moveStartOffset = fpos32 {};
+    _moveCurOffset = fpos32 {};
+    _moveDurationMs = duration_ms > 0 ? numeric_cast<float32_t>(duration_ms) : (speed > 0.0f ? whole_dist / speed : whole_dist);
+    _moveStartTime = _engine->GameTime.GetFrameTime();
+    _moveDir = mdir(iround<int32_t>(GeometryHelper::GetDirAngle(cur_hex, hex)));
+    _moveUpdateLastTime = _moveStartTime;
 }
 
 void ItemHexView::RefreshAlpha()
@@ -283,7 +365,7 @@ void ItemHexView::RefreshOffs()
 {
     FO_STACK_TRACE_ENTRY();
 
-    auto offset = GetOffset();
+    auto offset = _isMoving && _moveVisualOnly ? _moveBaseOffset : GetOffset();
     _sprOffset = ipos32 {offset.x, offset.y};
     _rootOffset = ipos32 {offset.x, offset.y};
 

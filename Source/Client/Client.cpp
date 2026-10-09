@@ -1320,8 +1320,28 @@ void ClientEngine::Net_OnCritterMoveItem()
 
     if (moved_item && cur_slot != prev_slot && cr->GetIsChosen()) {
         if (auto item = cr->GetInvItem(moved_item->GetId())) {
+            // A swap happens only when the target slot holds a single item, so mirror the displaced item
+            // back to prev_slot; a multi-item target (inventory) displaces nobody
+            auto settings = cr->GetEngine()->Settings;
+            bool target_multi = static_cast<size_t>(cur_slot) < settings->CritterSlotMultiItem.size() && settings->CritterSlotMultiItem[static_cast<size_t>(cur_slot)];
+
+            nptr<ItemView> swap_item {};
+            if (!target_multi) {
+                auto inv_items = cr->GetInvItems();
+                for (size_t i = 0; i < inv_items.size(); i++) {
+                    if (inv_items[i]->GetCritterSlot() == cur_slot && inv_items[i]->GetId() != item->GetId()) {
+                        swap_item = inv_items[i].get();
+                        break;
+                    }
+                }
+            }
+
             item->SetCritterSlot(cur_slot);
             moved_item->SetCritterSlot(prev_slot);
+
+            if (swap_item) {
+                swap_item->SetCritterSlot(prev_slot);
+            }
         }
     }
 
