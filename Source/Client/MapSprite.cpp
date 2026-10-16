@@ -83,6 +83,8 @@ void MapSprite::Reset() noexcept
     _extraChainChild = nullptr;
     _itemOwner = nullptr;
     _itemHitTestWhenHidden = false;
+    _savedAlpha = nullptr;
+    _occluderFaded = false;
 }
 
 auto MapSprite::GetDrawRect() const noexcept -> irect32
@@ -198,6 +200,30 @@ void MapSprite::SetFixedAlpha(uint8_t alpha) noexcept
 
     _color.comp.a = alpha;
     _alpha = &_color.comp.a;
+}
+
+void MapSprite::SetOccluderAlpha(uint8_t alpha) noexcept
+{
+    FO_NO_STACK_TRACE_ENTRY();
+
+    if (!_occluderFaded) {
+        _savedAlpha = _alpha;
+        _occluderFaded = true;
+    }
+
+    _occluderAlpha = alpha;
+    _alpha = &_occluderAlpha;
+}
+
+void MapSprite::ClearOccluderAlpha() noexcept
+{
+    FO_NO_STACK_TRACE_ENTRY();
+
+    if (_occluderFaded) {
+        _alpha = _savedAlpha;
+        _savedAlpha = nullptr;
+        _occluderFaded = false;
+    }
 }
 
 void MapSprite::SetLight(CornerType corner, ptr<const ucolor> light, msize size) noexcept

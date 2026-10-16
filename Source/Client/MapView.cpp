@@ -3832,6 +3832,74 @@ auto MapView::GetEntityAtScreen(ipos32 screen_pos, int32_t extra_range, bool che
     }
 }
 
+void MapView::UpdateCritterOccluders(nptr<CritterHexView> cr, uint8_t alpha)
+{
+    FO_STACK_TRACE_ENTRY();
+
+    const bool has_cr = cr && cr->IsMapSpriteValid();
+
+    nptr<const Sprite> cr_spr;
+    irect32 cr_rect {};
+    uint32_t cr_sort = 0;
+
+    if (has_cr) {
+        ptr<MapSprite> cr_mspr = cr->GetMapSprite();
+        cr_spr = cr_mspr->GetSprite();
+        cr_rect = cr_mspr->GetDrawRect();
+        cr_sort = cr_mspr->GetSortValue();
+    }
+
+    const int32_t sample_step = 4;
+
+    // Спрайт перекрывает криттера, если рисуется выше и накрывает его непрозрачные пиксели
+    auto sprite_occludes = [&](nptr<const Sprite> spr, irect32 rect, uint32_t sort) {
+        if (!has_cr || !cr_spr || !spr || sort <= cr_sort) {
+            return false;
+        }
+
+        const int32_t left = std::max(cr_rect.x, rect.x);
+        const int32_t top = std::max(cr_rect.y, rect.y);
+        const int32_t right = std::min(cr_rect.x + cr_rect.width, rect.x + rect.width);
+        const int32_t bottom = std::min(cr_rect.y + cr_rect.height, rect.y + rect.height);
+
+        if (left >= right || top >= bottom) {
+            return false;
+        }
+
+        for (int32_t y = top; y < bottom; y += sample_step) {
+            for (int32_t x = left; x < right; x += sample_step) {
+                if (!_engine->SprMngr.SpriteHitTest(cr_spr, ipos32(x - cr_rect.x, y - cr_rect.y))) {
+                    continue;
+                }
+
+                if (_engine->SprMngr.SpriteHitTest(spr, ipos32(x - rect.x, y - rect.y))) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    };
+
+    // Гасим только те спрайты-гексы, что реально закрывают криттера; остальные возвращаем к обычной альфе
+    for (auto& mspr_owner : _mapSprites.GetActiveSprites()) {
+        ptr<MapSprite> mspr = mspr_owner.as_ptr();
+        nptr<ItemHexView> item = mspr->GetItemOwner();
+
+        if (!item || (mspr->IsHidden() && !mspr->IsItemHitTestWhenHidden())) {
+            mspr->ClearOccluderAlpha();
+            continue;
+        }
+
+        if (sprite_occludes(mspr->GetSprite(), mspr->GetDrawRect(), mspr->GetSortValue())) {
+            mspr->SetOccluderAlpha(alpha);
+        }
+        else {
+            mspr->ClearOccluderAlpha();
+        }
+    }
+}
+
 auto MapView::FindPath(nptr<CritterHexView> find_cr, mpos start_hex, mpos& target_hex, int32_t cut, ipos16 target_hex_offset) -> optional<FindPathResult>
 {
     FO_STACK_TRACE_ENTRY();

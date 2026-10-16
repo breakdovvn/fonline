@@ -138,6 +138,8 @@ public:
     void SetColor(ucolor color) noexcept;
     void SetAlpha(nptr<const uint8_t> alpha) noexcept;
     void SetFixedAlpha(uint8_t alpha) noexcept;
+    void SetOccluderAlpha(uint8_t alpha) noexcept;
+    void ClearOccluderAlpha() noexcept;
     void SetLight(CornerType corner, ptr<const ucolor> light, msize size) noexcept;
     void SetHidden(bool hidden) noexcept;
     void SetElevation(int16_t elevation) noexcept;
@@ -167,6 +169,9 @@ private:
     // Null for sprites without a logical-root adjustment
     nptr<const ipos32> _pRootOffset {};
     nptr<const uint8_t> _alpha {};
+    nptr<const uint8_t> _savedAlpha {};
+    bool _occluderFaded {};
+    uint8_t _occluderAlpha { 255 };
     nptr<const ucolor> _light {};
     nptr<const ucolor> _lightRight {};
     nptr<const ucolor> _lightLeft {};
@@ -197,6 +202,7 @@ public:
 
     [[nodiscard]] auto HasActiveSprites() const noexcept { return !_activeSprites.empty(); }
     [[nodiscard]] auto GetActiveSprites() const noexcept -> const_span<unique_ptr<MapSprite>> { return _activeSprites; }
+    [[nodiscard]] auto GetActiveSprites() noexcept -> span<unique_ptr<MapSprite>> { return _activeSprites; }
     [[nodiscard]] auto GetDrawOrderRange(DrawOrderType from, DrawOrderType to) const -> pair<uint32_t, uint32_t>;
 
     auto AddSprite(DrawOrderType draw_order, mpos hex, ipos32 hex_offset, nptr<const ipos32> phex_offset, nptr<const Sprite> spr, nptr<const Sprite*> pspr, nptr<const ipos32> spr_offset, nptr<const ipos32> root_offset, nptr<const uint8_t> alpha, nptr<RenderEffect*> effect, nptr<bool> callback) noexcept -> ptr<MapSprite>;

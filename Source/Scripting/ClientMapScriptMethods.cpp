@@ -762,6 +762,18 @@ FO_SCRIPT_API nptr<ClientEntity> Client_Map_GetEntityAtScreenPos(ptr<MapView> se
 }
 
 ///@ ExportMethod
+FO_SCRIPT_API void Client_Map_UpdateCritterOccluders(ptr<MapView> self, ptr<CritterView> cr, uint8_t alpha)
+{
+    auto hex_cr = cr.dyn_cast<CritterHexView>();
+
+    if (!hex_cr) {
+        throw ScriptException("Critter is not on map");
+    }
+
+    self->UpdateCritterOccluders(hex_cr, alpha);
+}
+
+///@ ExportMethod
 FO_SCRIPT_API bool Client_Map_IsHexValid(ptr<MapView> self, mpos hex)
 {
     return self->GetSize().is_valid_pos(hex);
