@@ -114,6 +114,7 @@ public:
     [[nodiscard]] auto GetSpriteRootOffset() const noexcept -> ipos32;
     [[nodiscard]] auto GetViewRect() const noexcept -> irect32;
     [[nodiscard]] auto IsHidden() const noexcept -> bool { return _hidden; }
+    [[nodiscard]] auto IsOccluderFaded() const noexcept -> bool { return _occluderFaded; }
     [[nodiscard]] auto GetSprite() const noexcept -> nptr<const Sprite> { return _pSpr ? *_pSpr : _spr; }
     [[nodiscard]] auto GetHex() const noexcept -> mpos { return _hex; }
     [[nodiscard]] auto GetHexOffset() const noexcept -> ipos32 { return _hexOffset; }

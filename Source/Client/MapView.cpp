@@ -3727,6 +3727,11 @@ auto MapView::GetItemAtScreen(ipos32 screen_pos, bool& item_egg, int32_t extra_r
                 continue;
             }
 
+            // Occluder-faded sprites must not intercept the cursor from objects behind them
+            if (mspr->IsOccluderFaded()) {
+                continue;
+            }
+
             process_sprite(item.as_ptr(), mspr);
         }
     };
@@ -3841,19 +3846,32 @@ void MapView::UpdateCritterOccluders(nptr<CritterHexView> cr, uint8_t alpha)
     nptr<const Sprite> cr_spr;
     irect32 cr_rect {};
     uint32_t cr_sort = 0;
+    vector<ipos32> cr_pixels;
+
+    const int32_t sample_step = 4;
 
     if (has_cr) {
         ptr<MapSprite> cr_mspr = cr->GetMapSprite();
         cr_spr = cr_mspr->GetSprite();
         cr_rect = cr_mspr->GetDrawRect();
         cr_sort = cr_mspr->GetSortValue();
+
+        if (cr_spr) {
+            for (int32_t y = cr_rect.y; y < cr_rect.y + cr_rect.height; y += sample_step) {
+                for (int32_t x = cr_rect.x; x < cr_rect.x + cr_rect.width; x += sample_step) {
+                    if (_engine->SprMngr.SpriteHitTest(cr_spr, ipos32(x - cr_rect.x, y - cr_rect.y))) {
+                        cr_pixels.emplace_back(ipos32(x, y));
+                    }
+                }
+            }
+        }
     }
 
-    const int32_t sample_step = 4;
+    // Only an object covering a noticeable part of the silhouette counts as hiding it
+    constexpr int32_t required_cover_percent = 20;
 
-    // Спрайт перекрывает криттера, если рисуется выше и накрывает его непрозрачные пиксели
-    auto sprite_occludes = [&](nptr<const Sprite> spr, irect32 rect, uint32_t sort) {
-        if (!has_cr || !cr_spr || !spr || sort <= cr_sort) {
+    auto sprite_hides_critter = [&](nptr<const Sprite> spr, irect32 rect, uint32_t sort) {
+        if (!has_cr || cr_pixels.empty() || !spr || sort <= cr_sort) {
             return false;
         }
 
@@ -3866,32 +3884,31 @@ void MapView::UpdateCritterOccluders(nptr<CritterHexView> cr, uint8_t alpha)
             return false;
         }
 
-        for (int32_t y = top; y < bottom; y += sample_step) {
-            for (int32_t x = left; x < right; x += sample_step) {
-                if (!_engine->SprMngr.SpriteHitTest(cr_spr, ipos32(x - cr_rect.x, y - cr_rect.y))) {
-                    continue;
-                }
+        int32_t overlapped = 0;
+        for (const ipos32& p : cr_pixels) {
+            if (p.x < left || p.x >= right || p.y < top || p.y >= bottom) {
+                continue;
+            }
 
-                if (_engine->SprMngr.SpriteHitTest(spr, ipos32(x - rect.x, y - rect.y))) {
-                    return true;
-                }
+            if (_engine->SprMngr.SpriteHitTest(spr, ipos32(p.x - rect.x, p.y - rect.y))) {
+                overlapped++;
             }
         }
 
-        return false;
+        return overlapped > 0 && overlapped * 100 >= numeric_cast<int32_t>(cr_pixels.size()) * required_cover_percent;
     };
 
-    // Гасим только те спрайты-гексы, что реально закрывают криттера; остальные возвращаем к обычной альфе
     for (auto& mspr_owner : _mapSprites.GetActiveSprites()) {
         ptr<MapSprite> mspr = mspr_owner.as_ptr();
         nptr<ItemHexView> item = mspr->GetItemOwner();
 
-        if (!item || (mspr->IsHidden() && !mspr->IsItemHitTestWhenHidden())) {
-            mspr->ClearOccluderAlpha();
-            continue;
+        bool occluder = false;
+
+        if (item && !(mspr->IsHidden() && !mspr->IsItemHitTestWhenHidden()) && item->GetEggType() != EggAppearenceType::None) {
+            occluder = sprite_hides_critter(mspr->GetSprite(), mspr->GetDrawRect(), mspr->GetSortValue());
         }
 
-        if (sprite_occludes(mspr->GetSprite(), mspr->GetDrawRect(), mspr->GetSortValue())) {
+        if (occluder) {
             mspr->SetOccluderAlpha(alpha);
         }
         else {
