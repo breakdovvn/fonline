@@ -712,7 +712,12 @@ auto DefaultSpriteFactory::LoadSprite(hstring path, AtlasType atlas_type) -> sha
     shared_ptr<Sprite> result;
 
     if (sprite_info.FrameCount > 1 || direction_count > 1) {
-        auto anim = SafeAlloc::MakeShared<SpriteSheet>(_sprMngr, sprite_info.FrameCount, sprite_info.Duration.to_ms<int32_t>(), direction_count);
+        int32_t duration_ms = sprite_info.Duration.to_ms<int32_t>();
+        if (duration_ms == 0 && sprite_info.FrameCount > 1) {
+            duration_ms = numeric_cast<int32_t>(sprite_info.FrameCount) * 100;
+        }
+
+        auto anim = SafeAlloc::MakeShared<SpriteSheet>(_sprMngr, sprite_info.FrameCount, duration_ms, direction_count);
 
         for (uint8_t i = 0; i < direction_count; i++) {
             mdir dir = hdir(i);

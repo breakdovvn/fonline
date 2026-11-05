@@ -799,6 +799,9 @@ auto ImageBaker::LoadFrm(string_view fname, string_view opt, FileReader reader, 
 
     reader.SetCurPos(0x4);
     uint16_t frm_fps = reader.GetBEUInt16();
+    if (frm_fps == 0) {
+        frm_fps = 10; // Fallout FRMs without an explicit rate play at the default 10 FPS
+    }
 
     reader.SetCurPos(0x8);
     uint16_t frm_count = reader.GetBEUInt16();
@@ -1051,6 +1054,9 @@ auto ImageBaker::LoadFrX(string_view fname, string_view opt, FileReader reader, 
     // Load from frm
     reader.SetCurPos(0x4);
     uint16_t frm_fps = reader.GetBEUInt16();
+    if (frm_fps == 0) {
+        frm_fps = 10; // Fallout FRMs without an explicit rate play at the default 10 FPS
+    }
 
     reader.SetCurPos(0x8);
     uint16_t frm_count = reader.GetBEUInt16();
@@ -1474,6 +1480,9 @@ auto ImageBaker::LoadArt(string_view fname, string_view opt, FileReader reader, 
     }
 
     int32_t frm_fps = header.FrameRate;
+    if (frm_fps == 0) {
+        frm_fps = 10; // Fallout FRMs without an explicit rate play at the default 10 FPS
+    }
     int32_t frm_count = header.FrameCount;
     FO_VERIFY_AND_THROW(frm_count > 0, "Frame count must be positive", frm_count);
 
