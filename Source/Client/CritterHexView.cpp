@@ -174,7 +174,19 @@ void CritterHexView::Action(CritterAction action, int32_t action_data, nptr<Enti
         else
 #endif
         {
-            _resetTime = _engine->GameTime.GetFrameTime() + (_curAnim.has_value() ? _curAnim->FramesDuration : timespan());
+            nanotime now = _engine->GameTime.GetFrameTime();
+
+            timespan anim_duration {};
+            if (_curAnim.has_value()) {
+                timespan elapsed = now - _animStartTime;
+                anim_duration = _curAnim->FramesDuration > elapsed ? _curAnim->FramesDuration - elapsed : timespan {};
+            }
+
+            for (const auto& anim : _animSequence) {
+                anim_duration += anim.FramesDuration;
+            }
+
+            _resetTime = now + anim_duration;
             _needReset = true;
         }
     } break;
@@ -197,6 +209,19 @@ void CritterHexView::Action(CritterAction action, int32_t action_data, nptr<Enti
     }
 
     RefreshView();
+}
+
+// FRM animations without authored per-frame timing still need a sensible fallback; 10 FPS matches Fallout FRMs.
+static auto GetAnimFramesDuration(nptr<const SpriteSheet> frames) -> timespan
+{
+    FO_NO_STACK_TRACE_ENTRY();
+
+    int32_t whole_ticks = frames->GetWholeTicks();
+    if (whole_ticks == 0) {
+        whole_ticks = frames->GetFramesCount() * 100;
+    }
+
+    return timespan(std::chrono::milliseconds(whole_ticks));
 }
 
 void CritterHexView::NextAnim()
@@ -235,7 +260,7 @@ void CritterHexView::NextAnim()
 
         _curAnim->Frames = frames;
         _curAnim->FrameIndex = 0;
-        _curAnim->FramesDuration = timespan(std::chrono::milliseconds(frames->GetWholeTicks() != 0 ? frames->GetWholeTicks() : 100));
+        _curAnim->FramesDuration = GetAnimFramesDuration(frames);
     }
 
     _engine->OnCritterAnimationProcess.Fire(this, _curAnim->StateAnim, _curAnim->ActionAnim, _curAnim->GetContextItem(), false);
@@ -372,7 +397,7 @@ void CritterHexView::RefreshView(bool no_smooth)
 
                 _idle2dAnim.Frames = frames;
                 _idle2dAnim.FrameIndex = 0;
-                _idle2dAnim.FramesDuration = timespan(std::chrono::milliseconds(frames->GetWholeTicks() != 0 ? frames->GetWholeTicks() : 100));
+                _idle2dAnim.FramesDuration = GetAnimFramesDuration(frames);
 
                 if (GetCondition() == CritterCondition::Dead) {
                     _idle2dAnim.FrameIndex = _idle2dAnim.Frames->GetFramesCount() - 1;
