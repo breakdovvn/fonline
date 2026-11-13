@@ -250,4 +250,14 @@ FO_SCRIPT_API void Client_Item_Finish(ptr<ItemView> self)
     }
 }
 
+///@ ExportMethod
+FO_SCRIPT_API void Client_Item_FinishInstant(ptr<ItemView> self)
+{
+    if (auto hex_item = self.dyn_cast<ItemHexView>()) {
+        if (!hex_item->IsFinishing()) {
+            hex_item->FinishInstant();
+        }
+    }
+}
+
 FO_END_NAMESPACE

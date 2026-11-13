@@ -77,6 +77,7 @@ public:
     auto AddSprite(MapSpriteList& list, DrawOrderType draw_order, mpos hex, nptr<const ipos32> phex_offset) -> ptr<MapSprite>;
     auto AddExtraSprite(MapSpriteList& list, DrawOrderType draw_order, mpos hex, nptr<const ipos32> phex_offset) -> ptr<MapSprite>;
     void Finish();
+    void FinishInstant();
     void InheritAlphaFrom(ptr<const HexView> prev);
     void FadeUp();
     void SetTargetAlpha(uint8_t alpha);

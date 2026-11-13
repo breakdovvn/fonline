@@ -101,6 +101,19 @@ void HexView::Finish()
     _finishingTime = _fadingTime;
 }
 
+void HexView::FinishInstant()
+{
+    FO_STACK_TRACE_ENTRY();
+
+    _targetAlpha = 0;
+    _curAlpha = 0;
+    _fading = false;
+    _fadingTime = {};
+
+    _finishing = true;
+    _finishingTime = _map->GetEngine()->GameTime.GetFrameTime();
+}
+
 auto HexView::IsFinished() const noexcept -> bool
 {
     FO_NO_STACK_TRACE_ENTRY();
