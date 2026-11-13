@@ -4048,9 +4048,10 @@ void ServerEngine::ProcessCritterMovingBySteps(ptr<Critter> cr, ptr<Map> map)
             }
 
             // Pathfinding intentionally treats critters as passable so scripts can path to them.
-            // A client-supplied movement path must still stop before any foreign critter.
-            if (map->IsCritterOnHex(h, CritterFindType::Any)) {
-                for (auto other : map->GetCrittersOnHex(h, CritterFindType::Any)) {
+            // A client-supplied movement path must still stop before any living foreign critter;
+            // dead critters are passable so movement does not stall on corpses.
+            if (map->IsCritterOnHex(h, CritterFindType::NonDead)) {
+                for (auto other : map->GetCrittersOnHex(h, CritterFindType::NonDead)) {
                     if (other != cr) {
                         return HexBlockResult::Blocked;
                     }
