@@ -1231,12 +1231,13 @@ FO_SCRIPT_API void Client_Game_DrawPrimitive(ptr<ClientEngine> client, RenderPri
 }
 
 ///@ ExportMethod
-FO_SCRIPT_API void Client_Game_DrawCritter2d(ptr<ClientEngine> client, hstring modelName, CritterStateAnim stateAnim, CritterActionAnim actionAnim, mdir dir, int32_t l, int32_t t, int32_t r, int32_t b, bool scratch, bool center, ucolor color)
+FO_SCRIPT_API void Client_Game_DrawCritter2d(ptr<ClientEngine> client, hstring modelName, CritterStateAnim stateAnim, CritterActionAnim actionAnim, mdir dir, int32_t l, int32_t t, int32_t r, int32_t b, bool scratch, bool center, ucolor color, bool lastFrame = false)
 {
     auto frames = client->ResMngr.GetCritterAnimFrames(modelName, stateAnim, actionAnim, dir);
 
     if (frames) {
-        client->SprMngr.DrawSpriteSize(frames->GetCurSpr(), {l, t}, {r - l, b - t}, scratch, center, color != ucolor::clear ? color : Color::Neutral);
+        auto spr = lastFrame ? frames->GetSpr(frames->GetFramesCount() - 1) : frames->GetCurSpr();
+        client->SprMngr.DrawSpriteSize(spr, {l, t}, {r - l, b - t}, scratch, center, color != ucolor::clear ? color : Color::Neutral);
     }
 }
 
