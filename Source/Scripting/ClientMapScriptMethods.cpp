@@ -725,7 +725,30 @@ FO_SCRIPT_API void Client_Map_SetTransparentEgg(ptr<MapView> self, TransparentEg
     ipos32 hex_pos = self->GetHexMapPos(cr_hex->GetHex());
     ipos32 hex_center = {hex_pos.x + GameSettings::MAP_HEX_WIDTH / 2, hex_pos.y + GameSettings::MAP_HEX_HEIGHT / 2};
     ipos32 center_offset = {rect.x + rect.width / 2 - hex_center.x, rect.y + rect.height / 2 - hex_center.y};
-    self->SetTransparentEgg(slot, cr_hex->GetHex(), center_offset, rect.size(), true);
+    const int32_t egg_side = std::max(rect.width, rect.height);
+    self->SetTransparentEgg(slot, cr_hex->GetHex(), center_offset, isize32(egg_side, egg_side), true);
+}
+
+///@ ExportMethod
+FO_SCRIPT_API void Client_Map_SetTransparentEgg(ptr<MapView> self, TransparentEggSlot slot, nptr<CritterView> cr, isize32 eggSize)
+{
+    auto cr_hex = cr.dyn_cast<CritterHexView>();
+
+    if (!cr_hex) {
+        self->ClearTransparentEgg(slot);
+        return;
+    }
+
+    if (cr_hex->GetMap() != self || !cr_hex->IsMapSpriteValid()) {
+        self->ClearTransparentEgg(slot);
+        return;
+    }
+
+    irect32 rect = cr_hex->GetViewRect();
+    ipos32 hex_pos = self->GetHexMapPos(cr_hex->GetHex());
+    ipos32 hex_center = {hex_pos.x + GameSettings::MAP_HEX_WIDTH / 2, hex_pos.y + GameSettings::MAP_HEX_HEIGHT / 2};
+    ipos32 center_offset = {rect.x + rect.width / 2 - hex_center.x, rect.y + rect.height / 2 - hex_center.y};
+    self->SetTransparentEgg(slot, cr_hex->GetHex(), center_offset, eggSize, false);
 }
 
 ///@ ExportMethod
@@ -762,7 +785,7 @@ FO_SCRIPT_API nptr<ClientEntity> Client_Map_GetEntityAtScreenPos(ptr<MapView> se
 }
 
 ///@ ExportMethod
-FO_SCRIPT_API void Client_Map_UpdateCritterOccluders(ptr<MapView> self, ptr<CritterView> cr, uint8_t alpha)
+FO_SCRIPT_API bool Client_Map_IsCritterOccluded(ptr<MapView> self, ptr<CritterView> cr)
 {
     auto hex_cr = cr.dyn_cast<CritterHexView>();
 
@@ -770,7 +793,7 @@ FO_SCRIPT_API void Client_Map_UpdateCritterOccluders(ptr<MapView> self, ptr<Crit
         throw ScriptException("Critter is not on map");
     }
 
-    self->UpdateCritterOccluders(hex_cr, alpha);
+    return self->IsCritterOccluded(hex_cr);
 }
 
 ///@ ExportMethod

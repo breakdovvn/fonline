@@ -692,7 +692,7 @@ void MapView::DrawHexItem(ptr<ItemHexView> item, ptr<Field> field, mpos hex, boo
 
     AddSpriteToChain(field, mspr);
 
-    if (is_roof) {
+    if (is_roof || item->GetIsWall()) {
         mspr->SetEggAppearence(EggAppearenceType::Always);
     }
 }
@@ -2576,7 +2576,7 @@ void MapView::DrawMap()
             // Tiles
             _engine->OnRenderMap_BeforeTiles.Fire(this, draw_area);
             FO_VERIFY_AND_THROW(_engine->EffectMngr.Effects.Tile, "Tile effect is null");
-            _engine->SprMngr.DrawSprites(_mapSprites, draw_area, false, DrawOrderType::Tile, DrawOrderType::PreLight, GetMapDayColor(), _engine->EffectMngr.Effects.Tile);
+            _engine->SprMngr.DrawSprites(_mapSprites, draw_area, true, DrawOrderType::Tile, DrawOrderType::PreLight, GetMapDayColor(), _engine->EffectMngr.Effects.Tile);
             _engine->OnRenderMap_AfterTiles.Fire(this, draw_area);
 
             // Lighting
@@ -2621,7 +2621,7 @@ void MapView::DrawMap()
             // Flat sprites
             _engine->OnRenderMap_BeforeFlatSprites.Fire(this, draw_area);
             FO_VERIFY_AND_THROW(_engine->EffectMngr.Effects.Flat, "Flat effect is null");
-            _engine->SprMngr.DrawSprites(_mapSprites, draw_area, false, DrawOrderType::AfterLight, DrawOrderType::FlatEnd, GetMapDayColor(), _engine->EffectMngr.Effects.Flat);
+            _engine->SprMngr.DrawSprites(_mapSprites, draw_area, true, DrawOrderType::AfterLight, DrawOrderType::FlatEnd, GetMapDayColor(), _engine->EffectMngr.Effects.Flat);
             _engine->OnRenderMap_AfterFlatSprites.Fire(this, draw_area);
 
             // Other sprites, with fog layers interleaved by their draw order
@@ -3837,84 +3837,73 @@ auto MapView::GetEntityAtScreen(ipos32 screen_pos, int32_t extra_range, bool che
     }
 }
 
-void MapView::UpdateCritterOccluders(nptr<CritterHexView> cr, uint8_t alpha)
+auto MapView::IsCritterOccluded(nptr<CritterHexView> cr) -> bool
 {
     FO_STACK_TRACE_ENTRY();
 
-    const bool has_cr = cr && cr->IsMapSpriteValid();
+    if (!cr || !cr->IsMapSpriteValid()) {
+        return false;
+    }
 
-    nptr<const Sprite> cr_spr;
-    irect32 cr_rect {};
-    uint32_t cr_sort = 0;
+    ptr<MapSprite> cr_mspr = cr->GetMapSprite();
+    nptr<const Sprite> cr_spr = cr_mspr->GetSprite();
+    const irect32 cr_rect = cr_mspr->GetDrawRect();
+
+    if (!cr_spr) {
+        return false;
+    }
+
+    constexpr int32_t sample_step = 4;
     vector<ipos32> cr_pixels;
 
-    const int32_t sample_step = 4;
-
-    if (has_cr) {
-        ptr<MapSprite> cr_mspr = cr->GetMapSprite();
-        cr_spr = cr_mspr->GetSprite();
-        cr_rect = cr_mspr->GetDrawRect();
-        cr_sort = cr_mspr->GetSortValue();
-
-        if (cr_spr) {
-            for (int32_t y = cr_rect.y; y < cr_rect.y + cr_rect.height; y += sample_step) {
-                for (int32_t x = cr_rect.x; x < cr_rect.x + cr_rect.width; x += sample_step) {
-                    if (_engine->SprMngr.SpriteHitTest(cr_spr, ipos32(x - cr_rect.x, y - cr_rect.y))) {
-                        cr_pixels.emplace_back(ipos32(x, y));
-                    }
-                }
+    for (int32_t y = cr_rect.y; y < cr_rect.y + cr_rect.height; y += sample_step) {
+        for (int32_t x = cr_rect.x; x < cr_rect.x + cr_rect.width; x += sample_step) {
+            if (_engine->SprMngr.SpriteHitTest(cr_spr, ipos32(x - cr_rect.x, y - cr_rect.y))) {
+                cr_pixels.emplace_back(ipos32(x, y));
             }
         }
     }
 
-    // Only an object covering a noticeable part of the silhouette counts as hiding it
-    constexpr int32_t required_cover_percent = 20;
+    if (cr_pixels.empty()) {
+        return false;
+    }
 
-    auto sprite_hides_critter = [&](nptr<const Sprite> spr, irect32 rect, uint32_t sort) {
-        if (!has_cr || cr_pixels.empty() || !spr || sort <= cr_sort) {
-            return false;
+    constexpr int32_t required_cover_percent = 20;
+    const uint32_t cr_sort = cr_mspr->GetSortValue();
+
+    for (auto& mspr_owner : _mapSprites.GetActiveSprites()) {
+        ptr<MapSprite> mspr = mspr_owner.as_ptr();
+        nptr<ItemHexView> item = mspr->GetItemOwner();
+        nptr<const Sprite> spr = mspr->GetSprite();
+
+        if (!item || !spr || mspr->GetSortValue() <= cr_sort || (mspr->IsHidden() && !mspr->IsItemHitTestWhenHidden()) || item->GetEggType() == EggAppearenceType::None) {
+            continue;
         }
 
+        const irect32 rect = mspr->GetDrawRect();
         const int32_t left = std::max(cr_rect.x, rect.x);
         const int32_t top = std::max(cr_rect.y, rect.y);
         const int32_t right = std::min(cr_rect.x + cr_rect.width, rect.x + rect.width);
         const int32_t bottom = std::min(cr_rect.y + cr_rect.height, rect.y + rect.height);
 
         if (left >= right || top >= bottom) {
-            return false;
+            continue;
         }
 
         int32_t overlapped = 0;
-        for (const ipos32& p : cr_pixels) {
-            if (p.x < left || p.x >= right || p.y < top || p.y >= bottom) {
-                continue;
-            }
 
-            if (_engine->SprMngr.SpriteHitTest(spr, ipos32(p.x - rect.x, p.y - rect.y))) {
+        for (const ipos32& pixel : cr_pixels) {
+            if (pixel.x >= left && pixel.x < right && pixel.y >= top && pixel.y < bottom && _engine->SprMngr.SpriteHitTest(spr, ipos32(pixel.x - rect.x, pixel.y - rect.y))) {
                 overlapped++;
             }
         }
 
-        return overlapped > 0 && overlapped * 100 >= numeric_cast<int32_t>(cr_pixels.size()) * required_cover_percent;
-    };
-
-    for (auto& mspr_owner : _mapSprites.GetActiveSprites()) {
-        ptr<MapSprite> mspr = mspr_owner.as_ptr();
-        nptr<ItemHexView> item = mspr->GetItemOwner();
-
-        bool occluder = false;
-
-        if (item && !(mspr->IsHidden() && !mspr->IsItemHitTestWhenHidden()) && item->GetEggType() != EggAppearenceType::None) {
-            occluder = sprite_hides_critter(mspr->GetSprite(), mspr->GetDrawRect(), mspr->GetSortValue());
-        }
-
-        if (occluder) {
-            mspr->SetOccluderAlpha(alpha);
-        }
-        else {
-            mspr->ClearOccluderAlpha();
+        if (overlapped * 100 >= numeric_cast<int32_t>(cr_pixels.size()) * required_cover_percent) {
+            return true;
         }
     }
+
+    return false;
 }
 
 auto MapView::FindPath(nptr<CritterHexView> find_cr, mpos start_hex, mpos& target_hex, int32_t cut, ipos16 target_hex_offset) -> optional<FindPathResult>
