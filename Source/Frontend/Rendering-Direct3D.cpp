@@ -371,7 +371,7 @@ void Direct3D_Renderer::Init(GlobalSettings& settings, nptr<WindowInternalHandle
         };
         constexpr auto feature_levels_count = numeric_cast<UINT>(std::size(feature_levels));
 
-        UINT device_flags = D3D11_CREATE_DEVICE_SINGLETHREADED;
+        UINT device_flags = 0;
 
         if (_ctx->RenderDebug) {
             device_flags |= D3D11_CREATE_DEVICE_DEBUG;
